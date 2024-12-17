@@ -29,6 +29,7 @@ model Product {
     stock Int
     createdAt DateTime @default(now())
     TransactionDetails TransactionDetail[]
+    @@index([name])
 }
 
 model Transaction {

@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 
 // import routes
 import userRoute from "./routes/userRoute";
+import productRoute from "./routes/productRoute";
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/user", userRoute);
+app.use("/api/product", productRoute);
 
 app.listen(process.env.PORT, () => {
   console.log("Example app listening on port " + process.env.PORT);
