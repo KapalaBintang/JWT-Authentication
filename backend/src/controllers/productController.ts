@@ -1,170 +1,156 @@
-// Import Request and Response types from Express for handling HTTP requests and responses
 import { Request, Response } from "express";
-
-// Import the Prisma client configuration to interact with the database using Prisma ORM
 import prisma from "../config/prismaClient";
-
-// Import the asyncHandler middleware to handle asynchronous errors
 import asyncHandler from "../middlewares/asyncHandler";
+import { start } from "repl";
 
 // Function to create a new product
 const createProduct = asyncHandler(async (req: Request, res: Response) => {
-  // Extract product data (name, price, stock) from the request body
   const { name, price, stock } = req.body;
 
-  // Validate input: ensure all fields are provided
-  if (!name || !price || !stock) {
-    res.status(400); // Status 400 if any field is missing
-    throw new Error("Please add all fields");
+  if (!name || price === undefined || stock === undefined) {
+    res.status(400);
+    throw new Error("Please add all fields: name, price, and stock");
   }
 
-  // Validate that price and stock are greater than or equal to 0
-  if (price < 0 || stock < 0) {
-    res.status(400).json({
-      message: "Stock and price must be greater or equal than 0",
-    });
+  const parsedPrice = parseFloat(price);
+  const parsedStock = parseInt(stock);
+
+  if (isNaN(parsedPrice) || isNaN(parsedStock)) {
+    res.status(400);
+    throw new Error("Price and stock must be valid numbers");
   }
 
-  // Create a new product in the database using Prisma
+  if (parsedPrice < 0 || parsedStock < 0) {
+    res.status(400);
+    throw new Error("Stock and price must be greater or equal to 0");
+  }
+
   const newProduct = await prisma.product.create({
     data: {
       name,
-      price: parseFloat(price), // Convert price to float
-      stock: parseInt(stock), // Convert stock to integer
+      price: parsedPrice,
+      stock: parsedStock,
     },
   });
 
-  // Send a response with status 201 and the newly created product data
   res.status(201).json(newProduct);
 });
 
 // Function to update an existing product
 const updateProduct = asyncHandler(async (req: Request, res: Response) => {
-  // Extract product data (name, price, stock) and product id from the request body and params
+  const { id } = req.params; // Tidak perlu parse
   const { name, price, stock } = req.body;
-  const { id } = req.params;
 
-  // Validate input: ensure all fields are provided
-  if (!id || !name || !price || !stock) {
-    res.status(400); // Status 400 if any field is missing
-    throw new Error("Please add all fields");
+  if (!name || price === undefined || stock === undefined) {
+    res.status(400);
+    throw new Error("Please add all fields: name, price, and stock");
   }
 
-  // Validate that price and stock are greater than or equal to 0
-  if (price < 0 || stock < 0) {
-    res.status(400).json({
-      message: "Stock and price must be greater or equal than 0",
-    });
+  const parsedPrice = parseFloat(price);
+  const parsedStock = parseInt(stock);
+
+  if (isNaN(parsedPrice) || isNaN(parsedStock)) {
+    res.status(400);
+    throw new Error("Price and stock must be valid numbers");
   }
 
-  // Find the product by its id
+  if (parsedPrice < 0 || parsedStock < 0) {
+    res.status(400);
+    throw new Error("Stock and price must be greater or equal to 0");
+  }
+
   const findProduct = await prisma.product.findUnique({
-    where: {
-      id,
-    },
+    where: { id }, // Prisma akan menerima string yang dikonversi otomatis
   });
 
-  // If the product is not found, send status 404 and an error message
   if (!findProduct) {
     res.status(404);
     throw new Error("Product not found");
   }
 
-  // Update the product in the database using Prisma
-  const updateProduct = await prisma.product.update({
+  const updatedProduct = await prisma.product.update({
     where: { id },
     data: {
-      ...(name && { name }), // Update name if provided
-      ...(price && { price: parseFloat(price) }), // Update price if provided
-      ...(stock && { stock: parseInt(stock) }), // Update stock if provided
+      name,
+      price: parsedPrice,
+      stock: parsedStock,
     },
   });
 
-  // Send a response with status 200 and the updated product data
-  res.status(200).json(updateProduct);
+  res.status(200).json(updatedProduct);
 });
 
-// Function to delete a product by id
+// Function to delete a product
 const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
-  // Extract product id from the request params
   const { id } = req.params;
 
-  // Find the product by its id
   const findProduct = await prisma.product.findUnique({
     where: { id },
   });
 
-  // If the product is not found, send status 404 and an error message
   if (!findProduct) {
-    return res.status(404).json({ message: "Product not found" });
+    res.status(404);
+    throw new Error("Product not found");
   }
 
-  // Delete the product from the database using Prisma
-  const deleteProduct = await prisma.product.delete({
+  await prisma.product.delete({
     where: { id },
   });
 
-  // Send a response with status 200 and the deleted product data
-  res.status(200).json(deleteProduct);
+  res.status(200).json({ message: "Product deleted successfully" });
 });
 
-// Function to get a product by its id
+// Function to get a product by ID
 const getProductById = asyncHandler(async (req: Request, res: Response) => {
-  // Extract product id from the request params
   const { id } = req.params;
 
-  // Find the product by its id
   const findProduct = await prisma.product.findUnique({
     where: { id },
   });
 
-  // If the product is not found, send status 404 and an error message
   if (!findProduct) {
-    return res.status(404).json({ message: "Product not found" });
+    res.status(404);
+    throw new Error("Product not found");
   }
 
-  // Send a response with status 200 and the found product data
   res.status(200).json(findProduct);
 });
 
-// Function to get a list of products with pagination and filtering
+// Function to get all products with pagination and filtering
 const getProducts = asyncHandler(async (req: Request, res: Response) => {
-  // Extract query parameters for pagination and filtering
   const { page = 1, limit = 10, name = "" } = req.query;
 
-  // Convert page and limit to numbers
-  const pageNumber = Number(page);
-  const pageSize = Number(limit);
+  const pageNumber = parseInt(page as string) || 1;
+  const pageSize = parseInt(limit as string) || 10;
 
-  // Ensure 'name' is a string
+  if (pageNumber < 1 || pageSize < 1) {
+    res.status(400);
+    throw new Error("Page and limit must be positive integers");
+  }
+
   const nameFilter = typeof name === "string" ? name : "";
 
-  // Build filter condition based on the product name
   const filterCondition = nameFilter
     ? {
         name: {
-          contains: nameFilter, // Filter products by name
-          mode: "insensitive", // Case-insensitive filter
+          contains: nameFilter,
         },
       }
     : {};
 
-  // Fetch products with pagination and filter
   const products = await prisma.product.findMany({
-    where: filterCondition, // Apply filter if name is provided
+    where: filterCondition,
     orderBy: {
-      createdAt: "desc", // Sort products by creation date (newest first)
+      createdAt: "desc",
     },
-    skip: (pageNumber - 1) * pageSize, // Skip products for previous pages
-    take: pageSize, // Limit results to the page size
+    skip: (pageNumber - 1) * pageSize,
+    take: pageSize,
   });
 
-  // Get the total product count for pagination metadata
   const totalProducts = await prisma.product.count({
     where: filterCondition,
   });
 
-  // Send a response with status 200 and the products data along with pagination metadata
   res.status(200).json({
     currentPage: pageNumber,
     totalPages: Math.ceil(totalProducts / pageSize),
@@ -173,5 +159,5 @@ const getProducts = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Export the functions for use in route handlers
+// Export the functions
 export { createProduct, updateProduct, deleteProduct, getProductById, getProducts };
