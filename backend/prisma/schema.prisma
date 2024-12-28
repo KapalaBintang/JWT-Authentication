@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String         @unique
+  password       String
+  role           String
+  createdAt      DateTime       @default(now())
+  transactions   Transaction[]
+}
+
+model Product {
+  id             String              @id @default(uuid())
+  name           String              @unique
+  price          Decimal             @default(0.0)
+  stock          Int
+  createdAt      DateTime            @default(now())
+  details        TransactionDetail[]
+  @@index([name])
+}
+
+model Transaction {
+  id             String              @id @default(uuid())
+  total          Decimal             @default(0.0)
+  paid           Decimal             @default(0.0)
+  change         Decimal             @default(0.0)
+  createdAt      DateTime            @default(now())
+  user           User                @relation(fields: [userId], references: [id])
+  userId         String
+  payment        Payment             @relation(fields: [paymentId], references: [id])
+  paymentId      String              @unique
+  details        TransactionDetail[]
+}
+
+model TransactionDetail {
+  id             String              @id @default(uuid())
+  subtotal       Decimal             @default(0.0)
+  quantity       Int
+  product        Product             @relation(fields: [productId], references: [id])
+  transaction    Transaction         @relation(fields: [transactionId], references: [id])
+  productId      String
+  transactionId  String
+}
+
+model Payment {
+  id             String              @id @default(uuid())
+  paymentMethod  String
+  paymentStatus  PaymentStatus
+  createdAt      DateTime            @default(now())
+  transaction    Transaction?
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAIL
+}
