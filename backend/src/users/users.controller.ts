@@ -17,7 +17,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get('users')
+  @Get()
   getAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -31,7 +31,7 @@ export class UsersController {
     return this.usersService.getById(id);
   }
 
-  @Post('users')
+  @Post()
   create(
     @Body(new ValidationPipe({ whitelist: true })) createUserDto: CreateUserDto,
   ) {
