@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DbService } from 'src/db/db.service';
 import { Prisma } from '@prisma/client';
 
@@ -10,7 +10,7 @@ export class UsersService {
     return this.prisma.user.create({ data });
   }
 
-  async getAll(page: number, limit: number, search: string) {
+  async getAll(page: number = 1, limit: number = 10, search: string = '') {
     const searchTerm = search
       ? {
           OR: [{ name: { contains: search } }, { email: { contains: search } }],
@@ -24,7 +24,26 @@ export class UsersService {
     });
   }
 
+  async getById(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
   async update(id: string, data: Prisma.UserUpdateInput) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
     return this.prisma.user.update({
       where: { id },
       data,
