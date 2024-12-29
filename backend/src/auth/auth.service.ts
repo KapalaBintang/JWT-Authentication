@@ -1,5 +1,6 @@
 import {
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -25,17 +26,15 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    console.log('existing user sign in', existingUser);
+    console.log('Existing user sign in:', existingUser);
 
     const passwordMatch = await bcrypt.compare(
       data.password,
-      existingUser?.password,
+      existingUser.password,
     );
 
-    console.log('passwordMatch', passwordMatch);
-
     if (!passwordMatch) {
-      throw new NotFoundException('Wrong password');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const accessTokenPayload = {
@@ -45,6 +44,7 @@ export class AuthService {
 
     const refreshTokenPayload = {
       id: existingUser.id,
+      iat: Math.floor(new Date().getTime() / 1000),
     };
 
     const newAccessToken = await this.jwtService.signAsync(accessTokenPayload, {
@@ -60,22 +60,31 @@ export class AuthService {
       },
     );
 
-    await this.prisma.refreshToken.create({
-      data: {
-        token: newRefreshToken,
-        userId: existingUser.id,
-      },
-    });
+    // Transaksi untuk memastikan atomisitas
+    await this.prisma.$transaction(async (prisma) => {
+      // Hapus refresh token lama
+      await prisma.refreshToken.deleteMany({
+        where: { userId: existingUser.id },
+      });
 
-    console.log('newRefreshToken', newRefreshToken);
+      // Simpan refresh token baru
+      await prisma.refreshToken.create({
+        data: {
+          token: newRefreshToken,
+          userId: existingUser.id,
+          issuedAt: new Date(),
+        },
+      });
+    });
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    console.log('newAccessToken', newAccessToken);
+    console.log('New access token generated:', newAccessToken);
     return {
       accessToken: newAccessToken,
     };
@@ -118,64 +127,56 @@ export class AuthService {
   async refreshToken(req: any, res: Response) {
     const refreshToken = req.cookies.refreshToken;
 
-    // Cek apakah refresh token disediakan di cookie
     if (!refreshToken) {
-      throw new UnauthorizedException('Invalid credentials'); // Jangan beri detail berlebih pada respon error
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     let payload;
     try {
-      // Verifikasi refresh token menggunakan secret yang sesuai
       payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: process.env.REFRESH_TOKEN_SECRET,
       });
     } catch (error) {
-      // Token tidak valid atau kadaluarsa
       throw new UnauthorizedException(error ? error.message : 'Invalid token');
     }
 
-    // Cari refresh token di database untuk validasi tambahan
     const userAndRefreshToken = await this.prisma.refreshToken.findFirst({
-      where: {
-        token: refreshToken,
-      },
-      include: {
-        user: true, // Termasuk data user untuk digunakan di payload
-      },
+      where: { token: refreshToken },
+      include: { user: true },
     });
 
-    // Jika token tidak ditemukan di database, respon dengan UnauthorizedException
     if (!userAndRefreshToken) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Validasi apakah refresh token adalah replay (issuedAt di database lebih baru dari yang ada di payload)
+    console.log('issuedAt', new Date(userAndRefreshToken.issuedAt).getTime());
+    console.log('iat', payload.iat);
+
+    // Bandingkan timestamp iat di payload dengan issuedAt di database
     if (
-      new Date(userAndRefreshToken.issuedAt).getTime() >
-      payload.iat * 1000 // Convert issued-at dari payload ke milidetik
+      Math.floor(new Date(userAndRefreshToken.issuedAt).getTime() / 1000) >
+      payload.iat * 1000 // Convert iat ke milidetik
     ) {
       throw new UnauthorizedException('Invalid credentials (replayed)');
     }
 
-    // Buat payload baru untuk access token
     const accessTokenPayload = {
-      id: payload.id, // ID user dari payload refresh token
-      role: payload.role, // Role user dari payload refresh token
+      id: payload.id,
+      role: userAndRefreshToken.user.role,
     };
 
-    // Buat payload baru untuk refresh token dengan issued-at timestamp baru
     const refreshTokenPayload = {
       id: payload.id,
-      iat: Math.floor(Date.now() / 1000), // Timestamp baru dalam detik
+      iat: Math.floor(new Date().getTime() / 1000), // Timestamp baru dalam detik
     };
 
-    // Generate access token baru dengan masa berlaku 15 menit
+    // Generate access token baru
     const newAccessToken = await this.jwtService.signAsync(accessTokenPayload, {
       expiresIn: '15m',
       secret: process.env.ACCESS_TOKEN_SECRET,
     });
 
-    // Generate refresh token baru dengan masa berlaku 7 hari
+    // Generate refresh token baru
     const newRefreshToken = await this.jwtService.signAsync(
       refreshTokenPayload,
       {
@@ -184,25 +185,26 @@ export class AuthService {
       },
     );
 
-    // Update refresh token di database dengan token baru dan timestamp baru
-    await this.prisma.refreshToken.update({
-      where: {
-        id: userAndRefreshToken.id, // Menggunakan ID token untuk mengupdate token yang sesuai
-      },
+    // Update refresh token di database
+    const updatedToken = await this.prisma.refreshToken.update({
+      where: { id: userAndRefreshToken.id },
       data: {
         token: newRefreshToken,
-        issuedAt: new Date(), // Timestamp baru untuk validasi replay attack
+        issuedAt: new Date(), // Simpan timestamp baru
       },
     });
+
+    if (!updatedToken) {
+      throw new InternalServerErrorException('Failed to update refresh token');
+    }
 
     // Simpan refresh token baru di cookie
     res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true, // Hanya bisa diakses melalui HTTP (tidak dapat diakses oleh JavaScript)
-      secure: process.env.NODE_ENV === 'production', // Hanya gunakan secure di lingkungan production
-      maxAge: 7 * 24 * 60 * 60 * 1000, // Masa berlaku cookie dalam milidetik (7 hari)
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Return access token baru untuk client
     return {
       accessToken: newAccessToken,
     };

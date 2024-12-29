@@ -29,4 +29,11 @@ export class AuthController {
 
     res.status(200).json(result);
   }
+
+  @Post('refresh-token')
+  async refreshToken(@Request() req, @Response() res) {
+    const result = await this.authService.refreshToken(req, res);
+
+    res.status(200).json(result);
+  }
 }

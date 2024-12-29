@@ -36,6 +36,7 @@ enum Role {
 model Product {
   id             String              @id @default(uuid())
   name           String              @unique
+  cost           Decimal             @default(0.0)
   price          Decimal             @default(0.0)
   stock          Int
   createdAt      DateTime            @default(now())
