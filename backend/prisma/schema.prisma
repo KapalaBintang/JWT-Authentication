@@ -14,7 +14,15 @@ model User {
   password       String
   role           Role           @default(CASHIER)
   createdAt      DateTime       @default(now())
+  refreshToken   refreshToken[]
   transactions   Transaction[]
+}
+
+model refreshToken {
+    id             String         @id @default(uuid())
+    token          String
+    userId         String
+    user           User           @relation(fields: [userId], references: [id])
 }
 
 enum Role {
