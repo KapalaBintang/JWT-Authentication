@@ -7,11 +7,13 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuthGuard } from 'src/auth/auth.guard';
 
 @Controller('users')
 export class UsersController {
@@ -49,5 +51,11 @@ export class UsersController {
   @Delete(':id')
   delete(@Param('id') id: string) {
     return this.usersService.delete(id);
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('profile')
+  getUserProfile(@Body() req: any) {
+    return this.usersService.getUserProfile(req);
   }
 }
