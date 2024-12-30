@@ -54,9 +54,7 @@ npm install
 Create a `.env` file in the root of your project and fill in the following variables:
 
 ```env
-PORT=YOUR
-
-_PORT
+PORT=YOUR_PORT
 ACCESS_TOKEN_SECRET=your_strong_access_token_secret
 REFRESH_TOKEN_SECRET=your_strong_refresh_token_secret
 ```
