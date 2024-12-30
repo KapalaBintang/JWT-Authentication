@@ -44,8 +44,8 @@ This project implements JWT authentication with best practices to ensure securit
 ### Installing Dependencies
 
 ```bash
-git clone https://github.com/yourusername/project-name.git
-cd project-name
+git clone https://github.com/KapalaBintang/JWT-Authentication.git
+cd backend
 npm install
 ```
 
