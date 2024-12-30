@@ -1,8 +1,11 @@
-import { IsString, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsOptional, IsEmail, Matches } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
   @IsString()
+  @Matches(/^\S*$/, {
+    message: 'Name should not contain spaces',
+  })
   name: string;
 
   @IsOptional()

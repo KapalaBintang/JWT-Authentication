@@ -6,7 +6,7 @@ import {
 import { DbService } from 'src/db/db.service'; // Prisma service untuk mengakses database
 import * as bcrypt from 'bcrypt'; // Untuk hashing password
 import { JwtService } from '@nestjs/jwt'; // Untuk manipulasi JWT
-import { Response } from 'express'; // Untuk mengatur respons HTTP
+import { Request, Response } from 'express'; // Untuk mengatur respons HTTP
 
 @Injectable() // Menandakan bahwa ini adalah service yang dapat di-inject
 export class AuthService {
@@ -16,12 +16,28 @@ export class AuthService {
   ) {}
 
   // Fungsi login
-  async signIn(data: { email: string; password: string }, res: Response) {
+  async signIn(
+    data: { email: string; password: string },
+    req: Request,
+    res: Response,
+  ) {
+    const refreshToken = req.cookies.refreshToken;
+
+    const findRefreshToken = await this.prisma.refreshToken.findFirst({
+      where: { token: refreshToken },
+    });
+
+    if (findRefreshToken) {
+      await this.prisma.refreshToken.delete({
+        where: { id: findRefreshToken.id },
+      });
+    }
     // Cek apakah user dengan email tersebut ada
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
 
+    console.log('existingUser', existingUser);
     if (!existingUser) {
       throw new NotFoundException('User not found');
     }
