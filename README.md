@@ -87,9 +87,8 @@ You can use tools like **Postman** or **Insomnia** to test the API endpoints:
 
 Feel free to fork and contribute to this project. Make sure to follow best practices for security and coding style.
 
+Itu adalah kode lengkap untuk JWT authentication di NestJS dan file `README.md` untuk proyek ini.
+
 ```
 
----
-
-Itu adalah kode lengkap untuk JWT authentication di NestJS dan file `README.md` untuk proyek ini.
 ```
