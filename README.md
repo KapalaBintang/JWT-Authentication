@@ -1,6 +1,3 @@
-Berikut adalah template **README.md** yang menjelaskan tentang **JWT Authentication Best Practices** berdasarkan kode yang telah kamu berikan sebelumnya. Juga, saya telah menambahkan link ke profil media sosial kamu.
-
-````markdown
 # JWT Authentication Best Practices
 
 ## Overview
@@ -21,6 +18,7 @@ Ensure that the secret key used for signing JWT tokens is strong, unpredictable,
 ```env
 JWT_SECRET_KEY=your-strong-secret-key
 ```
+
 ````
 
 In your NestJS app, retrieve the secret key from environment variables:
@@ -141,9 +139,10 @@ NODE_ENV=development
 ````
 
 4. Run the application:
+
 ```bash
 npm run start
-````
+```
 
 ---
 
