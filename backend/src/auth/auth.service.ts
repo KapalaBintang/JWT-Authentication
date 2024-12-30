@@ -1,23 +1,23 @@
 import {
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { DbService } from 'src/db/db.service';
-// import { Prisma } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
-import { JwtService } from '@nestjs/jwt';
-import { Response } from 'express';
+import { DbService } from 'src/db/db.service'; // Prisma service untuk mengakses database
+import * as bcrypt from 'bcrypt'; // Untuk hashing password
+import { JwtService } from '@nestjs/jwt'; // Untuk manipulasi JWT
+import { Response } from 'express'; // Untuk mengatur respons HTTP
 
-@Injectable()
+@Injectable() // Menandakan bahwa ini adalah service yang dapat di-inject
 export class AuthService {
   constructor(
-    readonly prisma: DbService,
-    private jwtService: JwtService,
+    readonly prisma: DbService, // Dependency injection untuk Prisma
+    private jwtService: JwtService, // Dependency injection untuk JwtService
   ) {}
 
+  // Fungsi login
   async signIn(data: { email: string; password: string }, res: Response) {
+    // Cek apakah user dengan email tersebut ada
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
@@ -26,8 +26,7 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    console.log('Existing user sign in:', existingUser);
-
+    // Cek apakah password cocok
     const passwordMatch = await bcrypt.compare(
       data.password,
       existingUser.password,
@@ -37,6 +36,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Payload untuk akses dan refresh token
     const accessTokenPayload = {
       id: existingUser.id,
       role: existingUser.role,
@@ -44,14 +44,16 @@ export class AuthService {
 
     const refreshTokenPayload = {
       id: existingUser.id,
-      iat: Math.floor(new Date().getTime() / 1000),
+      iat: Math.floor(new Date().getTime() / 1000), // Timestamp saat ini
     };
 
+    // Buat akses token
     const newAccessToken = await this.jwtService.signAsync(accessTokenPayload, {
       expiresIn: '15m',
       secret: process.env.ACCESS_TOKEN_SECRET,
     });
 
+    // Buat refresh token
     const newRefreshToken = await this.jwtService.signAsync(
       refreshTokenPayload,
       {
@@ -60,14 +62,11 @@ export class AuthService {
       },
     );
 
-    // Transaksi untuk memastikan atomisitas
+    // Simpan refresh token di database
     await this.prisma.$transaction(async (prisma) => {
-      // Hapus refresh token lama
       await prisma.refreshToken.deleteMany({
         where: { userId: existingUser.id },
       });
-
-      // Simpan refresh token baru
       await prisma.refreshToken.create({
         data: {
           token: newRefreshToken,
@@ -77,106 +76,112 @@ export class AuthService {
       });
     });
 
+    // Simpan refresh token di cookie
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'none',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari
     });
 
-    console.log('New access token generated:', newAccessToken);
-    return {
-      accessToken: newAccessToken,
-    };
+    // Kembalikan akses token
+    return { accessToken: newAccessToken };
   }
 
+  // Fungsi logout
   async logout(req: any, res: Response) {
-    console.log('req.user', req.user);
-
+    // Ambil ID user dari objek request yang telah di-authenticate
     const { id } = req.user as { id: string };
 
+    // Jika tidak ada ID user, lemparkan NotFoundException
     if (!id) {
       throw new NotFoundException('User not found');
     }
 
-    const refreshToken: string = req.cookies.refreshToken;
+    // Ambil refresh token dari cookie
+    const refreshToken = req.cookies.refreshToken;
 
+    // Jika refresh token tidak ditemukan, lemparkan NotFoundException
     if (!refreshToken) {
       throw new NotFoundException('Refresh token is not provided');
     }
+
+    // Hapus refresh token dari database berdasarkan user ID dan token
     const deleteRefreshToken = await this.prisma.refreshToken.deleteMany({
-      where: {
-        userId: id,
-        token: refreshToken,
-      },
+      where: { userId: id, token: refreshToken },
     });
 
-    console.log('deleteRefreshToken', deleteRefreshToken);
-
+    // Jika tidak ada refresh token yang dihapus, lemparkan NotFoundException
     if (deleteRefreshToken.count === 0) {
       throw new NotFoundException('Refresh token not found');
     }
 
+    // Hapus cookie refresh token dari browser
     res.clearCookie('refreshToken');
 
-    return {
-      message: 'Logout successful',
-    };
+    // Kembalikan pesan logout sukses
+    return { message: 'Logout successful' };
   }
 
+  // Fungsi refresh token
   async refreshToken(req: any, res: Response) {
+    // Ambil refresh token dari cookie
     const refreshToken = req.cookies.refreshToken;
 
+    // Jika refresh token tidak ada, lemparkan UnauthorizedException
     if (!refreshToken) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     let payload;
     try {
+      // Verifikasi refresh token menggunakan secret key
       payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: process.env.REFRESH_TOKEN_SECRET,
       });
     } catch (error) {
-      throw new UnauthorizedException(error ? error.message : 'Invalid token');
+      // Jika verifikasi gagal, lemparkan UnauthorizedException
+      throw new UnauthorizedException(error.message || 'Invalid token');
     }
 
+    // Cari refresh token di database, termasuk data user
     const userAndRefreshToken = await this.prisma.refreshToken.findFirst({
       where: { token: refreshToken },
       include: { user: true },
     });
 
+    // Jika refresh token tidak ditemukan di database, lemparkan UnauthorizedException
     if (!userAndRefreshToken) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    console.log('issuedAt', new Date(userAndRefreshToken.issuedAt).getTime());
-    console.log('iat', payload.iat);
-
-    // Bandingkan timestamp iat di payload dengan issuedAt di database
+    // Pastikan timestamp refresh token di database sesuai dengan payload
     if (
       Math.floor(new Date(userAndRefreshToken.issuedAt).getTime() / 1000) >
-      payload.iat * 1000 // Convert iat ke milidetik
+      payload.iat
     ) {
       throw new UnauthorizedException('Invalid credentials (replayed)');
     }
 
+    // Buat payload untuk access token baru
     const accessTokenPayload = {
       id: payload.id,
       role: userAndRefreshToken.user.role,
     };
 
+    // Buat payload untuk refresh token baru
     const refreshTokenPayload = {
       id: payload.id,
-      iat: Math.floor(new Date().getTime() / 1000), // Timestamp baru dalam detik
+      iat: Math.floor(new Date().getTime() / 1000),
     };
 
-    // Generate access token baru
+    // Generate access token baru dengan masa berlaku 15 menit
     const newAccessToken = await this.jwtService.signAsync(accessTokenPayload, {
       expiresIn: '15m',
       secret: process.env.ACCESS_TOKEN_SECRET,
     });
 
-    // Generate refresh token baru
+    // Generate refresh token baru dengan masa berlaku 7 hari
     const newRefreshToken = await this.jwtService.signAsync(
       refreshTokenPayload,
       {
@@ -185,28 +190,20 @@ export class AuthService {
       },
     );
 
-    // Update refresh token di database
-    const updatedToken = await this.prisma.refreshToken.update({
+    // Update refresh token di database dengan token baru dan timestamp baru
+    await this.prisma.refreshToken.update({
       where: { id: userAndRefreshToken.id },
-      data: {
-        token: newRefreshToken,
-        issuedAt: new Date(), // Simpan timestamp baru
-      },
+      data: { token: newRefreshToken, issuedAt: new Date() },
     });
 
-    if (!updatedToken) {
-      throw new InternalServerErrorException('Failed to update refresh token');
-    }
-
-    // Simpan refresh token baru di cookie
+    // Simpan refresh token baru ke cookie
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari
     });
 
-    return {
-      accessToken: newAccessToken,
-    };
+    // Kembalikan access token baru
+    return { accessToken: newAccessToken };
   }
 }

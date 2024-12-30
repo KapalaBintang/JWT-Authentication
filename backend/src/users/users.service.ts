@@ -27,21 +27,6 @@ export class UsersService {
     return this.prisma.user.create({ data });
   }
 
-  // admin
-  async getAll(page: number = 1, limit: number = 10, search: string = '') {
-    const searchTerm = search
-      ? {
-          OR: [{ name: { contains: search } }, { email: { contains: search } }],
-        }
-      : {};
-
-    return this.prisma.user.findMany({
-      skip: (page - 1) * limit,
-      take: limit,
-      where: searchTerm,
-    });
-  }
-
   async getById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -92,6 +77,21 @@ export class UsersService {
         email: data.email || user.email,
         password: data.password || user.password,
       },
+    });
+  }
+
+  // admin
+  async getAll(page: number = 1, limit: number = 10, search: string = '') {
+    const searchTerm = search
+      ? {
+          OR: [{ name: { contains: search } }, { email: { contains: search } }],
+        }
+      : {};
+
+    return this.prisma.user.findMany({
+      skip: (page - 1) * limit,
+      take: limit,
+      where: searchTerm,
     });
   }
 

@@ -7,31 +7,42 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
-@Injectable()
+@Injectable() // Menandakan bahwa ini adalah service yang dapat di-inject
 export class AuthGuard implements CanActivate {
-  constructor(private jwtService: JwtService) {}
+  constructor(private jwtService: JwtService) {} // Menggunakan dependency injection untuk JwtService
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Mendapatkan request dari context
     const request = context.switchToHttp().getRequest();
+
+    // Mengekstrak token dari header Authorization
     const token = this.extractTokenFromHeader(request);
     if (!token) {
-      throw new UnauthorizedException();
+      // Jika tidak ada token, lempar UnauthorizedException
+      throw new UnauthorizedException('Token not provided');
     }
+
     try {
+      // Verifikasi token menggunakan JwtService
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.ACCESS_TOKEN_SECRET,
+        secret: process.env.ACCESS_TOKEN_SECRET, // Kunci rahasia untuk memverifikasi token
       });
-      // 💡 We're assigning the payload to the request object here
-      // so that we can access it in our route handlers
+
+      // Menyimpan payload token ke dalam request untuk digunakan di endpoint lain
       request['user'] = payload;
     } catch {
-      throw new UnauthorizedException();
+      // Jika verifikasi gagal, lempar UnauthorizedException
+      throw new UnauthorizedException('Invalid or expired token');
     }
+
+    // Jika semua proses berhasil, return true untuk mengizinkan akses
     return true;
   }
 
   private extractTokenFromHeader(request: Request): string | undefined {
+    // Memisahkan header Authorization untuk mendapatkan tipe dan token
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
+    // Jika tipe adalah Bearer, kembalikan tokennya
     return type === 'Bearer' ? token : undefined;
   }
 }
